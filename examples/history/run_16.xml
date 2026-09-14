@@ -1,0 +1,8 @@
+<testsuite>
+    <testcase classname="tests.test_auth" name="test_login_redirects"></testcase>
+    <testcase classname="tests.test_auth" name="test_expired_token"><failure message="assertion failed"/></testcase>
+    <testcase classname="tests.test_payments" name="test_webhook_retry"><failure message="assertion failed"/></testcase>
+    <testcase classname="tests.test_payments" name="test_currency_round"></testcase>
+    <testcase classname="tests.test_search" name="test_pagination_order"></testcase>
+    <testcase classname="tests.test_search" name="test_empty_query"></testcase>
+</testsuite>
