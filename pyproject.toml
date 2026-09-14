@@ -1,0 +1,16 @@
+[project]
+name = "flakelens"
+version = "0.1.0"
+description = "Local-first flaky test detection over pytest JUnit XML, exposed as an MCP server"
+requires-python = ">=3.10"
+dependencies = ["mcp>=2.0"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["flakelens*"]
