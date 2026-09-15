@@ -1,57 +1,78 @@
 # flakelens
 
-Finds flaky tests from JUnit XML or TAP history, using a Wilson score
-confidence interval instead of "it failed twice so it's flaky." Runs
-entirely on your machine. No CI platform account, no uploaded logs, no
-dashboard login.
+[![CI](https://github.com/Fahadullah-dev/flakelens/actions/workflows/ci.yml/badge.svg)](https://github.com/Fahadullah-dev/flakelens/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![pytest plugin](https://img.shields.io/badge/pytest-plugin-0A9EDC.svg)](#the-pytest-plugin-fastest-path)
 
-Three interfaces onto the same core: a **pytest plugin** for the fastest
-feedback loop (`pytest --flakelens`, no separate step), a **CLI/MCP server**
-for reading history you already have or asking an agent "is this test suite
-reliable," and direct **Python functions** if you want to script it yourself.
-
-## why
-
-Flaky tests account for a meaningful share of CI failures and cost teams
-real diagnostic time chasing failures that were never really regressions.
-Most flaky test tooling assumes you're already on a specific CI platform and
-sends your test history to their service. This assumes neither: point it at
-history you already have, let it run your suite locally and generate the
-history itself, or let the pytest plugin accumulate it automatically as you
-work.
-
-## the statistics
-
-A test that failed 0 times in 3 runs is not proven stable, the sample is
-just too small to say anything. A test that failed 20 times in 20 runs
-isn't flaky, it's broken, flakiness means the outcome is inconsistent. This
-tool keeps those cases separate instead of collapsing everything into a
-single failure percentage:
-
-- **stable-pass**: 0 failures, enough runs to be confident
-- **broken**: fails every run, consistent, not flaky
-- **flaky**: some runs pass and some fail
-- **insufficient-data**: fewer than 5 runs, no claim is made
-
-The failure rate reported for flaky and stable-pass tests is a 95% Wilson
-confidence interval, not a raw percentage.
-
-## install
+**flakelens finds flaky tests from JUnit XML or TAP history using a Wilson score confidence
+interval — not "it failed twice, must be flaky."** It runs entirely on your machine: no CI
+platform account, no uploaded logs, no dashboard login. Three interfaces onto the same core —
+a pytest plugin, an MCP server, and plain Python functions.
 
 ```
+$ pytest --flakelens
+..F..F..                                                    [100%]
+======================= flakelens: flaky tests detected =======================
+  tests/test_payments.py::test_webhook_retry  2/6 failures across recorded runs
+  history: .flakelens/history (last 50 runs kept)
+```
+
+## Table of contents
+
+- [Why](#why)
+- [The statistics](#the-statistics)
+- [Install](#install)
+- [The pytest plugin (fastest path)](#the-pytest-plugin-fastest-path)
+- [Usage without the plugin](#usage-without-the-plugin)
+- [Tools](#tools)
+- [Formats](#formats)
+- [How it compares](#how-it-compares)
+- [Limitations](#limitations)
+- [Tests](#tests)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why
+
+Flaky tests account for a meaningful share of CI failures and cost teams real diagnostic time
+chasing failures that were never really regressions. Most flaky-test tooling assumes you're
+already on a specific CI platform and sends your test history to their service. This assumes
+neither: point it at history you already have, let it run your suite locally and generate the
+history itself, or let the pytest plugin accumulate it automatically as you work.
+
+## The statistics
+
+A test that failed 0 times in 3 runs is not proven stable — the sample is just too small to
+say anything. A test that failed 20 times in 20 runs isn't flaky, it's broken; flakiness means
+the outcome is *inconsistent*. This tool keeps those cases separate instead of collapsing
+everything into a single failure percentage:
+
+| Status | Meaning |
+|---|---|
+| **stable-pass** | 0 failures, enough runs to be confident |
+| **broken** | fails every run, consistent — not flaky |
+| **flaky** | some runs pass, some fail |
+| **insufficient-data** | fewer than 5 runs — no claim is made |
+
+The failure rate reported for `flaky` and `stable-pass` tests is a 95% Wilson confidence
+interval, not a raw percentage.
+
+## Install
+
+```bash
 pip install -e .
 ```
 
-Requires `mcp>=2.0`, `junitparser>=5.0`, `tap.py>=3.2`.
+Requires `mcp>=2.0`, `junitparser>=5.0`, `tap.py>=3.2` (installed automatically).
 
-## the pytest plugin (fastest path)
+## The pytest plugin (fastest path)
 
-Installing flakelens registers a pytest plugin, but it's opt-in - a plain
-`pip install flakelens` for the MCP server shouldn't silently start writing
-files or printing extra output in some unrelated project's `pytest` run.
-Enable it per invocation:
+Installing flakelens registers a pytest plugin, but it's **opt-in** — a plain
+`pip install flakelens` for the MCP server shouldn't silently start writing files or printing
+extra output in some unrelated project's `pytest` run. Enable it per invocation:
 
-```
+```bash
 pytest --flakelens
 ```
 
@@ -62,28 +83,19 @@ or project-wide, in `pyproject.toml`:
 flakelens_enabled = true
 ```
 
-Each enabled run appends this run's results to `.flakelens/history/` (real
-JUnit XML, written via the same `junitparser` library flakelens reads with -
-one dependency, a symmetric round-trip, nothing invented on top). Once
-enough runs have accumulated, a flaky-test summary prints at the end of the
-normal `pytest` output - no separate command to remember:
+Each enabled run appends this run's results to `.flakelens/history/` (real JUnit XML, written
+via the same `junitparser` library flakelens reads with — one dependency, a symmetric
+round-trip, nothing invented on top). Once enough runs have accumulated, a flaky-test summary
+prints at the end of normal `pytest` output — no separate command to remember.
 
-```
-$ pytest --flakelens
-..F..F..                                                    [100%]
-======================= flakelens: flaky tests detected =======================
-  tests/test_payments.py::test_webhook_retry  2/6 failures across recorded runs
-  history: .flakelens/history (last 50 runs kept)
-```
+> **For CI:** this only works if `.flakelens/history/` persists *across* runs — a single
+> ephemeral CI job has nothing to accumulate against. Cache the directory (e.g.
+> [`actions/cache`](https://github.com/actions/cache) on GitHub Actions) between runs.
 
-**For CI**, this only works if `.flakelens/history/` persists *across* runs -
-a single ephemeral CI job has nothing to accumulate against. Cache the
-directory (e.g. `actions/cache` on GitHub Actions) between runs.
+## Usage without the plugin
 
-## usage without the plugin
-
-Fastest path, no test execution, just reads existing JUnit XML or TAP
-reports - a directory can mix both formats and they aggregate together:
+Fastest path, no test execution, just reads existing JUnit XML or TAP reports — a directory
+can mix both formats and they aggregate together:
 
 ```python
 from flakelens.server import analyze_test_history
@@ -91,7 +103,7 @@ analyze_test_history("path/to/test/reports")
 ```
 
 Against the example history in this repo (30 simulated CI runs, generated by
-`scripts/generate_demo_history.py`):
+[`scripts/generate_demo_history.py`](scripts/generate_demo_history.py)):
 
 ```
 $ python examples/demo.py
@@ -118,53 +130,73 @@ from flakelens.server import suggest_quarantine
 suggest_quarantine("path/to/test/reports", threshold=0.1)
 ```
 
-## tools
+## Tools
 
-| tool | reads history | runs your code |
-|---|---|---|
-| `analyze_test_history(directory)` | yes | no |
-| `run_flakiness_scan(test_path, runs=20)` | no | yes |
-| `suggest_quarantine(directory, threshold=0.1)` | yes | no |
+| Tool | Reads history | Runs your code |
+|---|:---:|:---:|
+| `analyze_test_history(directory)` | ✅ | — |
+| `run_flakiness_scan(test_path, runs=20)` | — | ✅ |
+| `suggest_quarantine(directory, threshold=0.1)` | ✅ | — |
 
-## formats
+## Formats
 
-- **JUnit XML** (`.xml`), via [`junitparser`](https://github.com/weiwei/junitparser) - the de
+- **JUnit XML** (`.xml`), via [`junitparser`](https://github.com/weiwei/junitparser) — the de
   facto interchange format most CI/CD systems converge on regardless of source language.
   GitHub Actions, GitLab CI, CircleCI, and Jenkins don't have their own proprietary formats;
   they consume JUnit XML from reporters like `jest-junit` (Jest), `rspec_junit_formatter`
   (RSpec), `gotestsum --junitfile` (Go), and PHPUnit's `--log-junit`, in addition to pytest's
   own `--junitxml` and Java/Maven/Gradle Surefire's native output. `junitparser` handles
-  dialect variance a hand-rolled parser doesn't - multiple result entries per case, both
+  dialect variance a hand-rolled parser doesn't — multiple result entries per case, both
   `<testsuites>`-wrapped and bare `<testsuite>` roots, non-standard/customized XML.
-- **TAP** (`.tap`), via [`tap.py`](https://github.com/python-tap/tappy) - a genuinely
+- **TAP** (`.tap`), via [`tap.py`](https://github.com/python-tap/tappy) — a genuinely
   different, non-XML protocol JUnit XML doesn't subsume. What Bats (bash test suites), Perl's
   native test harness, PHP via `--tap`, and Node's own `tap`/`node-tap` framework produce
-  natively. TAP has no class/module scoping the way JUnit XML does - only a line description -
+  natively. TAP has no class/module scoping the way JUnit XML does — only a line description —
   so a TAP producer emitting generic or duplicate descriptions across runs can conflate
   distinct tests in history aggregation. Point flakelens at a TAP producer that emits
   distinguishable descriptions.
 
 **Not covered yet:** fetching history automatically from a CI provider's API (GitHub Actions
-artifacts, GitLab, CircleCI) - that's platform integration, a different kind of expansion from
+artifacts, GitLab, CircleCI) — that's platform integration, a different kind of expansion from
 format support, and a real, larger feature (auth, multiple provider SDKs, rate limits) left
 for later rather than bundled in here.
 
-## limitations
+## How it compares
 
-`run_flakiness_scan` executes the target project's test code directly. That
-code can write files, hit a network, or touch a database, it is not
-sandboxed. Point it at code you trust, same as running `pytest` yourself.
+Most flaky-test tooling in the wild is either a paid, CI-integrated SaaS (Datadog Test
+Optimization, BuildPulse, Trunk) or a narrow open-source CLI tied to one language/runner.
+flakelens trades the CI-vendor integration those platforms offer for being free, local, and
+statistically honest about small sample sizes — a fit for a team that wants a flaky-test
+signal without adopting a new vendor relationship just to get one.
 
-The pytest plugin's history is local to the machine/CI runner it accumulates
-on unless you persist `.flakelens/history/` yourself (see the CI note
-above).
+## Limitations
 
-## tests
+`run_flakiness_scan` executes the target project's test code directly. That code can write
+files, hit a network, or touch a database — it is not sandboxed. Point it at code you trust,
+same as running `pytest` yourself.
 
-```
+The pytest plugin's history is local to the machine/CI runner it accumulates on unless you
+persist `.flakelens/history/` yourself (see the CI note above).
+
+`analyze_test_history` and `suggest_quarantine` reject `directory` arguments containing `..`
+path segments before touching disk. Their MCP schemas don't *declare* that constraint (the MCP
+SDK's tool-argument model doesn't expose per-tool schema customization for this through its
+public decorator API) — a static reader of the schema alone wouldn't see it. The runtime
+behavior is the real guarantee; the schema gap is a known, disclosed limitation, not an
+oversight.
+
+## Tests
+
+```bash
 pytest
 ```
 
-## license
+## Contributing
 
-MIT
+Issues and PRs welcome. For a change that touches behavior, add a test alongside it — see
+[`tests/`](tests/) for the existing style. `pytest` should pass before you open a PR; CI runs
+the same suite across Python 3.10, 3.11, and 3.12.
+
+## License
+
+[MIT](LICENSE)
