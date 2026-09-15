@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
@@ -7,6 +8,18 @@ from . import history, runner
 from .stats import classify
 
 server = MCPServer("flakelens")
+
+
+def _validate_directory(directory):
+    """Rejects '..' path segments before touching the filesystem. The MCP SDK's own
+    resource_security traversal guard only applies to @server.resource templates, not
+    @server.tool parameters like this one - verified against the installed SDK source,
+    not assumed - so this is flakelens' own responsibility, not something the framework
+    does for it."""
+    if ".." in Path(directory).parts:
+        raise ValueError(f"directory must not contain '..' path segments: {directory}")
+    if not os.path.isdir(directory):
+        raise ValueError(f"not a directory: {directory}")
 
 
 def _report(history):
@@ -35,8 +48,7 @@ def analyze_test_history(directory: str) -> list[dict]:
     Each .xml (JUnit) or .tap (Test Anything Protocol) file in the directory is treated as
     one historical test run; a directory can mix both formats.
     """
-    if not os.path.isdir(directory):
-        raise ValueError(f"not a directory: {directory}")
+    _validate_directory(directory)
     return _report(history.load_history(directory))
 
 
@@ -65,8 +77,7 @@ def run_flakiness_scan(test_path: str, runs: int = 20) -> list[dict]:
 )
 def suggest_quarantine(directory: str, threshold: float = 0.1) -> dict:
     """Returns a pytest -m marker expression to skip tests flakier than the threshold."""
-    if not os.path.isdir(directory):
-        raise ValueError(f"not a directory: {directory}")
+    _validate_directory(directory)
     test_history = history.load_history(directory)
     flaky = [
         test_id for test_id, (runs, failures) in test_history.items()

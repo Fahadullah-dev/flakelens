@@ -19,6 +19,16 @@ def test_analyze_test_history_rejects_missing_directory():
         analyze_test_history("/no/such/directory")
 
 
+def test_analyze_test_history_rejects_path_traversal(tmp_path):
+    with pytest.raises(ValueError, match=r"\.\."):
+        analyze_test_history(str(tmp_path / ".." / "somewhere"))
+
+
+def test_suggest_quarantine_rejects_path_traversal(tmp_path):
+    with pytest.raises(ValueError, match=r"\.\."):
+        suggest_quarantine(str(tmp_path / ".." / "somewhere"))
+
+
 def test_analyze_test_history_aggregates_mixed_formats(tmp_path):
     (tmp_path / "run1.xml").write_text(
         '<testsuite><testcase classname="t" name="a"></testcase>'
