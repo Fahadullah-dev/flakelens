@@ -3,7 +3,7 @@ import os
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from . import junit, runner
+from . import history, runner
 from .stats import classify
 
 server = MCPServer("flakelens")
@@ -29,15 +29,15 @@ def _report(history):
         read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
     )
 )
-def analyze_junit_history(directory: str) -> list[dict]:
-    """Classifies tests as flaky, broken, stable, or unproven from past JUnit XML runs.
+def analyze_test_history(directory: str) -> list[dict]:
+    """Classifies tests as flaky, broken, stable, or unproven from past test runs.
 
-    Each .xml file in the directory is treated as one historical test run.
+    Each .xml (JUnit) or .tap (Test Anything Protocol) file in the directory is treated as
+    one historical test run; a directory can mix both formats.
     """
     if not os.path.isdir(directory):
         raise ValueError(f"not a directory: {directory}")
-    history = junit.load_history(directory)
-    return _report(history)
+    return _report(history.load_history(directory))
 
 
 @server.tool(
@@ -49,14 +49,13 @@ def run_flakiness_scan(test_path: str, runs: int = 20) -> list[dict]:
     """Runs a pytest suite repeatedly and classifies flaky tests from the results.
 
     Executes the target project's test code, which may touch the filesystem,
-    network, or a database. Slower and more invasive than analyze_junit_history.
+    network, or a database. Slower and more invasive than analyze_test_history.
     """
     if not os.path.exists(test_path):
         raise ValueError(f"path does not exist: {test_path}")
     if runs < 5:
         raise ValueError("runs must be at least 5 for a meaningful confidence interval")
-    history = runner.run_repeated(test_path, runs)
-    return _report(history)
+    return _report(runner.run_repeated(test_path, runs))
 
 
 @server.tool(
@@ -68,9 +67,9 @@ def suggest_quarantine(directory: str, threshold: float = 0.1) -> dict:
     """Returns a pytest -m marker expression to skip tests flakier than the threshold."""
     if not os.path.isdir(directory):
         raise ValueError(f"not a directory: {directory}")
-    history = junit.load_history(directory)
+    test_history = history.load_history(directory)
     flaky = [
-        test_id for test_id, (runs, failures) in history.items()
+        test_id for test_id, (runs, failures) in test_history.items()
         if classify(runs, failures).status == "flaky" and failures / runs >= threshold
     ]
     names = [t.split("::")[-1] for t in flaky]

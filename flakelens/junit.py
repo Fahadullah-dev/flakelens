@@ -1,44 +1,30 @@
 """Parses pytest-style JUnit XML. One file is treated as one test run.
 
-Only the shape pytest's --junitxml writer produces is supported: a
-<testsuite> of <testcase classname="..." name="..."> elements, each
-optionally containing a <failure> or <error> child on failure, or a
-<skipped> child. Other JUnit dialects (jest, gradle) are not handled.
+Built on junitparser (https://github.com/weiwei/junitparser) instead of a hand-rolled
+ElementTree walker, so dialect variance across JUnit-XML producers - jest-junit, gotestsum
+--junitfile, rspec_junit_formatter, PHPUnit --log-junit, Maven/Gradle Surefire, and pytest's
+own writer - is handled by a library that already deals with it, not reinvented here.
+junitparser.JUnitXml.fromfile() normalizes both a bare <testsuite> root and a
+<testsuites>-wrapped root into the same `for suite in xml: for case in suite:` shape.
 """
 
-import xml.etree.ElementTree as ET
-from collections import defaultdict
-from pathlib import Path
+from junitparser import Error, Failure, JUnitXml, Skipped
 
 
 def test_id(testcase):
-    return f"{testcase.get('classname', '')}::{testcase.get('name', '')}"
+    return f"{testcase.classname or ''}::{testcase.name or ''}"
 
 
 def parse_run(xml_path):
     """Returns {test_id: 'pass' | 'fail' | 'skip'} for one run file."""
-    root = ET.parse(xml_path).getroot()
-    testcases = root.iter("testcase")
+    xml = JUnitXml.fromfile(str(xml_path))
     results = {}
-    for tc in testcases:
-        if tc.find("skipped") is not None:
-            results[test_id(tc)] = "skip"
-        elif tc.find("failure") is not None or tc.find("error") is not None:
-            results[test_id(tc)] = "fail"
-        else:
-            results[test_id(tc)] = "pass"
+    for suite in xml:
+        for case in suite:
+            if any(isinstance(r, Skipped) for r in case.result):
+                results[test_id(case)] = "skip"
+            elif any(isinstance(r, (Failure, Error)) for r in case.result):
+                results[test_id(case)] = "fail"
+            else:
+                results[test_id(case)] = "pass"
     return results
-
-
-def load_history(directory):
-    """Returns {test_id: (runs, failures)} aggregated across all XML files in directory."""
-    counts = defaultdict(lambda: [0, 0])  # [runs, failures]
-    files = sorted(Path(directory).glob("*.xml"))
-    for f in files:
-        for tid, status in parse_run(f).items():
-            if status == "skip":
-                continue
-            counts[tid][0] += 1
-            if status == "fail":
-                counts[tid][1] += 1
-    return {tid: tuple(v) for tid, v in counts.items()}

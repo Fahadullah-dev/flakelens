@@ -1,7 +1,7 @@
 """Runs a pytest suite N times and collects JUnit XML per run.
 
 This executes arbitrary test code from the target project. It is the slow,
-live counterpart to junit.load_history, which only reads existing reports.
+live counterpart to history.load_history, which only reads existing reports.
 """
 
 import subprocess
@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import junit
+from . import history
 
 
 def run_repeated(test_path, runs):
@@ -22,4 +22,4 @@ def run_repeated(test_path, runs):
                 capture_output=True,
                 timeout=300,
             )
-        return junit.load_history(tmp)
+        return history.load_history(tmp)
